@@ -83,6 +83,7 @@ export interface MaterializeResult {
   tableName: string;
   rowsInserted: number;
   dbFile: string;
+  preexistingRowCount: number;
 }
 
 export interface ChatMessage {

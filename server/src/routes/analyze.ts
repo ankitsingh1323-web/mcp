@@ -3,7 +3,7 @@ import { getDbProfile } from "../auth/authStore.js";
 import { generateCreateTable } from "../analysis/ddlGenerator.js";
 import { generateInsights } from "../analysis/insights.js";
 import { scanForPii } from "../analysis/piiScanner.js";
-import { materializeTable, openDb } from "../ingestion/sqliteConnector.js";
+import { materializeTable, openDb, tableRowCount } from "../ingestion/sqliteConnector.js";
 import { workspace } from "../session/sessionStore.js";
 import type { DbProfile } from "../auth/authStore.js";
 
@@ -51,18 +51,32 @@ analyzeRouter.post("/:id/materialize", (req, res) => {
   const entry = workspace.getDataset(req.params.id);
   if (!entry) return res.status(404).json({ error: "Dataset not found." });
 
+  const force = req.query.force === "true";
+
+  // Materializing is idempotent by default: re-clicking "Create table" for a
+  // dataset that was already inserted must not duplicate its rows, since
+  // there's no natural key to de-dupe against post-insert. Pass ?force=true
+  // to intentionally drop and re-insert this dataset's table from scratch.
+  if (entry.materialized && !force) {
+    return res.json(entry.materialized);
+  }
+
   try {
     const ddl = generateCreateTable(entry.profile.name, entry.profile.columns);
     const profile = workspaceDbProfile();
     const db = openDb(profile);
+
+    if (force) {
+      db.exec(`DROP TABLE IF EXISTS "${ddl.tableName.replace(/"/g, '""')}"`);
+    }
+
+    const preexistingRowCount = tableRowCount(db, ddl.tableName);
     const rowsInserted = materializeTable(db, ddl, entry.profile.columns, entry.rows);
     db.close();
 
-    res.json({
-      tableName: ddl.tableName,
-      rowsInserted,
-      dbFile: profile.file,
-    });
+    const result = { tableName: ddl.tableName, rowsInserted, dbFile: profile.file, preexistingRowCount };
+    workspace.setMaterialized(entry.profile.id, result);
+    res.json(result);
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : "materialize failed" });
   }

@@ -1,9 +1,10 @@
-import type { ChatMessage, DatasetProfile, PiiReport } from "../types.js";
+import type { ChatMessage, DatasetProfile, MaterializeResult, PiiReport } from "../types.js";
 
 interface StoredDataset {
   profile: DatasetProfile;
   rows: Record<string, unknown>[];
   piiReport?: PiiReport;
+  materialized?: MaterializeResult;
 }
 
 /**
@@ -22,6 +23,11 @@ class Workspace {
   setPiiReport(datasetId: string, report: PiiReport): void {
     const entry = this.datasets.get(datasetId);
     if (entry) entry.piiReport = report;
+  }
+
+  setMaterialized(datasetId: string, result: MaterializeResult): void {
+    const entry = this.datasets.get(datasetId);
+    if (entry) entry.materialized = result;
   }
 
   getDataset(datasetId: string): StoredDataset | undefined {

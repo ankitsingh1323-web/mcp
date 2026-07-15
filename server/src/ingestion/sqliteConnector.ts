@@ -65,6 +65,17 @@ export function sampleRows(
   >[];
 }
 
+export function tableRowCount(db: Database.Database, tableName: string): number {
+  const exists = db
+    .prepare(`SELECT 1 FROM sqlite_master WHERE type='table' AND name = ?`)
+    .get(tableName);
+  if (!exists) return 0;
+  const { count } = db.prepare(`SELECT COUNT(*) as count FROM ${quoteIdent(tableName)}`).get() as {
+    count: number;
+  };
+  return count;
+}
+
 function quoteIdent(name: string): string {
   return `"${name.replace(/"/g, '""')}"`;
 }

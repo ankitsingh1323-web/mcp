@@ -4,6 +4,15 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const DATETIME_RE = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}/;
 const BOOL_VALUES = new Set(["true", "false", "yes", "no", "0", "1"]);
 
+// A single pathological cell (e.g. a huge pasted blob) shouldn't blow up
+// every response that echoes sample/top values back to the client.
+const MAX_DISPLAY_LEN = 300;
+
+function truncateForDisplay(value: unknown): unknown {
+  if (typeof value !== "string" || value.length <= MAX_DISPLAY_LEN) return value;
+  return `${value.slice(0, MAX_DISPLAY_LEN)}…`;
+}
+
 function inferCellType(value: unknown): ColumnType {
   if (value === null || value === undefined || value === "") return "unknown";
   if (typeof value === "boolean") return "boolean";
@@ -59,7 +68,7 @@ export function profileRows(rows: Record<string, unknown>[]): ColumnStats[] {
       nullable: nullCount > 0,
       nullCount,
       distinctCount: distinct.size,
-      sampleValues: nonNull.slice(0, 5),
+      sampleValues: nonNull.slice(0, 5).map(truncateForDisplay),
     };
 
     if (inferredType === "integer" || inferredType === "float") {
@@ -82,7 +91,7 @@ export function profileRows(rows: Record<string, unknown>[]): ColumnStats[] {
       col.topValues = [...counts.entries()]
         .sort((a, b) => b[1] - a[1])
         .slice(0, 5)
-        .map(([value, count]) => ({ value, count }));
+        .map(([value, count]) => ({ value: truncateForDisplay(value) as string, count }));
     }
 
     stats.push(col);

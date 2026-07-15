@@ -14,17 +14,17 @@ interface PatternRule {
   baseSeverity: PiiSeverity;
 }
 
+// Order matters: scanColumn() breaks ties between equally-matching rules in
+// favor of whichever is evaluated first, so more specific numeric-format
+// patterns (ssn's 3-2-4 digit groups, credit card, dotted-quad IPs) must be
+// listed before the deliberately permissive generic "phone" pattern —
+// otherwise phone's broad character class (digits/spaces/dashes/parens/dots,
+// length 6-17) also matches SSNs and IPs and would shadow them.
 const RULES: PatternRule[] = [
   {
     category: "email",
     valuePattern: /^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/,
     nameHints: ["email", "e-mail", "mail"],
-    baseSeverity: "medium",
-  },
-  {
-    category: "phone",
-    valuePattern: /^\+?[\d][\d\s\-().]{6,17}\d$/,
-    nameHints: ["phone", "mobile", "cell", "telephone", "contact_number"],
     baseSeverity: "medium",
   },
   {
@@ -44,6 +44,12 @@ const RULES: PatternRule[] = [
     valuePattern: /^(\d{1,3}\.){3}\d{1,3}$/,
     nameHints: ["ip", "ip_address", "client_ip"],
     baseSeverity: "low",
+  },
+  {
+    category: "phone",
+    valuePattern: /^\+?[\d][\d\s\-().]{6,17}\d$/,
+    nameHints: ["phone", "mobile", "cell", "telephone", "contact_number"],
+    baseSeverity: "medium",
   },
   {
     category: "national_id",
@@ -82,14 +88,22 @@ function nameMatches(colName: string, hints: string[]): boolean {
   return hints.some((h) => n === h || n.includes(h));
 }
 
+// Masked output length is capped independent of input length — a
+// pathologically long cell value must not produce an equally long "masked"
+// string in every PII report response.
+const MAX_MASK_LEN = 40;
+
 function mask(value: string): string {
   if (value.length <= 2) return "*".repeat(value.length);
   if (value.includes("@")) {
     const [user, domain] = value.split("@");
-    return `${user[0]}${"*".repeat(Math.max(user.length - 1, 1))}@${domain}`;
+    const maskedUser = `${user[0]}${"*".repeat(Math.min(Math.max(user.length - 1, 1), MAX_MASK_LEN))}`;
+    const shortDomain = domain.length > MAX_MASK_LEN ? `${domain.slice(0, MAX_MASK_LEN)}…` : domain;
+    return `${maskedUser}@${shortDomain}`;
   }
   const visible = Math.min(2, value.length - 2);
-  return `${value.slice(0, visible)}${"*".repeat(value.length - visible - 2)}${value.slice(-2)}`;
+  const starCount = Math.min(value.length - visible - 2, MAX_MASK_LEN);
+  return `${value.slice(0, visible)}${"*".repeat(Math.max(starCount, 0))}${value.slice(-2)}`;
 }
 
 function severityWeight(severity: PiiSeverity): number {

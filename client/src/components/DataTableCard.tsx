@@ -62,6 +62,8 @@ export function DataTableCard({
         {materialized ? (
           <span className="materialize-note">
             ✓ Created "{materialized.tableName}" — {materialized.rowsInserted} rows in {materialized.dbFile}
+            {materialized.preexistingRowCount > 0 &&
+              ` (table already had ${materialized.preexistingRowCount} row(s) before this insert)`}
           </span>
         ) : (
           <button className="btn primary" onClick={handleCreate} disabled={loading}>

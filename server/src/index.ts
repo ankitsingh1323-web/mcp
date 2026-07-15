@@ -9,8 +9,15 @@ import { uploadRouter } from "./routes/upload.js";
 const app = express();
 const PORT = Number(process.env.PORT ?? 4000);
 
-app.use(cors());
+app.disable("x-powered-by");
+app.use(cors({ origin: process.env.CORS_ORIGIN ?? "*" }));
 app.use(express.json({ limit: "2mb" }));
+app.use((_req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  next();
+});
 
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true, authStore: authStoreLocation(), llm: llmStatus() });
