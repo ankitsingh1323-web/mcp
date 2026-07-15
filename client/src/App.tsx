@@ -1,7 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import "./styles/theme.css";
 import "./styles/app.css";
-import { analyzeDataset, connectDb, connectObs, fetchSources, streamChatMessage, uploadFiles } from "./lib/api";
+import {
+  analyzeDataset,
+  connectDb,
+  connectObs,
+  fetchSources,
+  streamChatMessage,
+  synthesizeSummary,
+  uploadFiles,
+} from "./lib/api";
 import type {
   AnalysisCard,
   ChatEntry,
@@ -29,9 +37,9 @@ export default function App() {
       role: "assistant",
       ts: nowIso(),
       text:
-        "Hi — I'm Datalore. Drop a CSV, JSON, or XLSX file (or connect a database / observability source " +
-        "from the left panel) and I'll profile it, surface business insights, propose a table you can " +
-        "create, and run a PII health check. Then ask me anything about the data.",
+        "Hi — I'm Datalore. Drop a CSV, JSON, XLSX, PDF, DOCX, or ZIP/TAR archive (or connect a database / " +
+        "observability source from the left panel) and I'll profile it, surface business insights, propose " +
+        "a table you can create, and run a PII health check. Then ask me anything about the data.",
     },
   ]);
   const [datasets, setDatasets] = useState<DatasetProfile[]>([]);
@@ -41,6 +49,7 @@ export default function App() {
   const [connectingDb, setConnectingDb] = useState<string | null>(null);
   const [connectingObs, setConnectingObs] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [synthesizing, setSynthesizing] = useState(false);
   const [toast, setToast] = useState<string | undefined>();
   const [theme, setTheme] = useState<"light" | "dark">(() => {
     const stored = localStorage.getItem("theme");
@@ -84,9 +93,9 @@ export default function App() {
       const result = await analyzeDataset(profile.id);
       setDatasetRisk((prev) => ({ ...prev, [profile.id]: result.piiReport.riskLevel }));
       const cards: AnalysisCard[] = [
-        { kind: "summary", profile },
+        profile.contentKind === "document" ? { kind: "document", profile } : { kind: "summary", profile },
         { kind: "insights", insights: result.insights },
-        { kind: "table", profile, ddl: result.ddl },
+        ...(result.ddl ? [{ kind: "table", profile, ddl: result.ddl } as AnalysisCard] : []),
         { kind: "pii", report: result.piiReport },
       ];
       addEntry({ id: newId(), role: "assistant", ts: nowIso(), cards });
@@ -111,7 +120,7 @@ export default function App() {
       removeEntry(pendingId);
       if (created.length > 0) setDatasets((prev) => [...prev, ...created]);
       for (const profile of created) await pushAnalysis(profile);
-      if (errors.length > 0) setToast(errors.map((e) => `${e.file}: ${e.error}`).join("; "));
+      if (errors.length > 0) setToast(errors.map((e) => `${e.file}: ${e.reason}`).join("; "));
       if (created.length === 0 && errors.length === 0) {
         setToast("No rows could be read from that file.");
       }
@@ -162,6 +171,24 @@ export default function App() {
       setToast(err instanceof Error ? err.message : `Could not reach "${name}".`);
     } finally {
       setConnectingObs(null);
+    }
+  }
+
+  async function handleSynthesize() {
+    setSynthesizing(true);
+    try {
+      const summary = await synthesizeSummary();
+      const bullets = summary.perDataset.map((d) => `• ${d.name}: ${d.headline}`).join("\n");
+      const text = [
+        summary.narrative ?? `Overall risk level: ${summary.overallRiskLevel}.`,
+        "",
+        bullets,
+      ].join("\n");
+      addEntry({ id: newId(), role: "assistant", ts: nowIso(), text });
+    } catch (err) {
+      setToast(err instanceof Error ? err.message : "Could not generate the executive summary.");
+    } finally {
+      setSynthesizing(false);
     }
   }
 
@@ -253,6 +280,14 @@ export default function App() {
             <div className="chat-header-title">Analysis chat</div>
             <div className="chat-header-sub">{datasets.length} dataset(s) in this workspace</div>
           </div>
+          <button
+            className="btn"
+            onClick={handleSynthesize}
+            disabled={synthesizing || datasets.length === 0}
+            title="Merge all analyzed datasets into one executive summary"
+          >
+            {synthesizing ? "Synthesizing…" : "⬡ Synthesize"}
+          </button>
           <div className="llm-pill">
             <span
               className="dot"

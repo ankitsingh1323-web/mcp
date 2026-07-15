@@ -1,5 +1,4 @@
 import { Router } from "express";
-import { nanoid } from "nanoid";
 import {
   dbProfilesMeta,
   getDbProfile,
@@ -7,11 +6,8 @@ import {
   llmStatus,
   obsProfilesMeta,
 } from "../auth/authStore.js";
+import { connectDatabase } from "../agents/domains/databaseManager.js";
 import { fetchObsHealth } from "../ingestion/obsConnector.js";
-import { listTables, openDb, sampleRows } from "../ingestion/sqliteConnector.js";
-import { profileRows } from "../analysis/profiler.js";
-import { workspace } from "../session/sessionStore.js";
-import type { DatasetProfile } from "../types.js";
 
 export const sourcesRouter = Router();
 
@@ -28,32 +24,8 @@ sourcesRouter.post("/db/:name/connect", (req, res) => {
   const requestedTables: string[] | undefined = req.body?.tables;
 
   try {
-    const db = openDb(profile);
-    const allTables = listTables(db);
-    const targets = requestedTables
-      ? allTables.filter((t) => requestedTables.includes(t.name))
-      : allTables;
-
-    const created: DatasetProfile[] = [];
-    for (const table of targets) {
-      const sample = sampleRows(db, table.name, 2000);
-      if (sample.length === 0) continue;
-      const columns = profileRows(sample);
-      const datasetProfile: DatasetProfile = {
-        id: nanoid(10),
-        name: table.name,
-        sourceKind: "database",
-        sourceLabel: `${profile.kind}:${profile.name}`,
-        rowCount: table.rowCount,
-        columns,
-        createdAt: new Date().toISOString(),
-      };
-      workspace.addDataset(datasetProfile, sample);
-      created.push(datasetProfile);
-    }
-
-    db.close();
-    res.json({ datasets: created, availableTables: allTables.map((t) => t.name) });
+    const result = connectDatabase(profile, requestedTables);
+    res.json(result);
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : "connection failed" });
   }

@@ -1,4 +1,12 @@
-import type { AnalyzeResponse, DatasetProfile, MaterializeResult, ObsHealthReport, SourcesResponse } from "./types";
+import type {
+  AnalyzeResponse,
+  DatasetProfile,
+  ExecutiveSummary,
+  MaterializeResult,
+  ObsHealthReport,
+  SourcesResponse,
+  UnsupportedFile,
+} from "./types";
 
 const BASE = "/api";
 
@@ -10,7 +18,7 @@ async function asJson<T>(res: Response): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-export async function uploadFiles(files: File[]): Promise<{ datasets: DatasetProfile[]; errors: { file: string; error: string }[] }> {
+export async function uploadFiles(files: File[]): Promise<{ datasets: DatasetProfile[]; errors: UnsupportedFile[] }> {
   const form = new FormData();
   files.forEach((f) => form.append("files", f));
   const res = await fetch(`${BASE}/upload`, { method: "POST", body: form });
@@ -43,6 +51,11 @@ export async function analyzeDataset(id: string): Promise<AnalyzeResponse> {
 
 export async function materializeDataset(id: string): Promise<MaterializeResult> {
   const res = await fetch(`${BASE}/datasets/${id}/materialize`, { method: "POST" });
+  return asJson(res);
+}
+
+export async function synthesizeSummary(): Promise<ExecutiveSummary> {
+  const res = await fetch(`${BASE}/datasets/synthesize`);
   return asJson(res);
 }
 

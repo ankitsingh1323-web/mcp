@@ -1,8 +1,9 @@
 import { Router } from "express";
 import { getDbProfile } from "../auth/authStore.js";
+import { generateInsightsForDataset } from "../agents/domains/businessIntelManager.js";
+import { scanDataset } from "../agents/domains/piiComplianceManager.js";
+import { synthesize } from "../agents/synthesiser.js";
 import { generateCreateTable } from "../analysis/ddlGenerator.js";
-import { generateInsights } from "../analysis/insights.js";
-import { scanForPii } from "../analysis/piiScanner.js";
 import { materializeTable, openDb, tableRowCount } from "../ingestion/sqliteConnector.js";
 import { workspace } from "../session/sessionStore.js";
 import type { DbProfile } from "../auth/authStore.js";
@@ -24,6 +25,13 @@ analyzeRouter.get("/", (_req, res) => {
   res.json({ datasets: workspace.listDatasets() });
 });
 
+// Must be registered before "/:id" — otherwise Express would match this
+// literal path as if "synthesize" were a dataset id.
+analyzeRouter.get("/synthesize", async (_req, res) => {
+  const summary = await synthesize();
+  res.json(summary);
+});
+
 analyzeRouter.get("/:id", (req, res) => {
   const entry = workspace.getDataset(req.params.id);
   if (!entry) return res.status(404).json({ error: "Dataset not found." });
@@ -38,11 +46,19 @@ analyzeRouter.post("/:id/analyze", async (req, res) => {
   const entry = workspace.getDataset(req.params.id);
   if (!entry) return res.status(404).json({ error: "Dataset not found." });
 
-  const piiReport = scanForPii(entry.profile, entry.rows);
+  const piiReport = scanDataset(entry.profile, { rows: entry.rows, text: entry.text });
   workspace.setPiiReport(entry.profile.id, piiReport);
 
-  const insights = await generateInsights(entry.profile, piiReport, entry.rows);
-  const ddl = generateCreateTable(entry.profile.name, entry.profile.columns);
+  const insights = await generateInsightsForDataset(entry.profile, piiReport, {
+    rows: entry.rows,
+    text: entry.text,
+  });
+  workspace.setInsights(entry.profile.id, insights);
+
+  const ddl =
+    entry.profile.contentKind === "tabular"
+      ? generateCreateTable(entry.profile.name, entry.profile.columns)
+      : undefined;
 
   res.json({ insights, piiReport, ddl });
 });
@@ -50,6 +66,10 @@ analyzeRouter.post("/:id/analyze", async (req, res) => {
 analyzeRouter.post("/:id/materialize", (req, res) => {
   const entry = workspace.getDataset(req.params.id);
   if (!entry) return res.status(404).json({ error: "Dataset not found." });
+
+  if (entry.profile.contentKind !== "tabular") {
+    return res.status(400).json({ error: "Only tabular datasets can be materialized into a table." });
+  }
 
   const force = req.query.force === "true";
 

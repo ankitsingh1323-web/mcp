@@ -36,7 +36,7 @@ export function ChatComposer({
           ref={fileRef}
           type="file"
           multiple
-          accept=".csv,.json,.xlsx,.xls"
+          accept=".csv,.json,.xlsx,.xls,.pdf,.docx,.zip,.tar,.gz,.tgz"
           style={{ display: "none" }}
           onChange={(e) => {
             if (e.target.files) onUpload(Array.from(e.target.files));

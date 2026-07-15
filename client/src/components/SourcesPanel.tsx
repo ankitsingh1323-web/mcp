@@ -54,14 +54,14 @@ export function SourcesPanel({
             handleFiles(e.dataTransfer.files);
           }}
         >
-          {uploading ? "Uploading…" : "Drop CSV / JSON / XLSX here, or click to browse"}
+          {uploading ? "Uploading…" : "Drop CSV / JSON / XLSX / PDF / DOCX / ZIP here, or click to browse"}
           <small>Parsed locally in your workspace, never leaves this app</small>
         </div>
         <input
           ref={inputRef}
           type="file"
           multiple
-          accept=".csv,.json,.xlsx,.xls"
+          accept=".csv,.json,.xlsx,.xls,.pdf,.docx,.zip,.tar,.gz,.tgz"
           style={{ display: "none" }}
           onChange={(e) => {
             handleFiles(e.target.files);
@@ -143,7 +143,9 @@ export function SourcesPanel({
                     {risk && <span className={`badge badge-${risk}`}>{risk}</span>}
                   </div>
                   <span className="dataset-chip-meta">
-                    {d.rowCount.toLocaleString()} rows · {d.columns.length} cols
+                    {d.contentKind === "document"
+                      ? `${(d.documentMeta?.wordCount ?? 0).toLocaleString()} words`
+                      : `${d.rowCount.toLocaleString()} rows · ${d.columns.length} cols`}
                   </span>
                 </div>
               );

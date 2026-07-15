@@ -1,5 +1,52 @@
 export type SourceKind = "attachment" | "database" | "observability";
 
+// Tabular datasets (csv/json/xlsx/db tables) keep the existing rows+columns
+// profile. Document datasets (pdf/docx) have no natural rows/columns — they
+// carry extracted text + documentMeta instead, and skip DDL/materialize.
+export type ContentKind = "tabular" | "document";
+
+export interface DocumentMeta {
+  wordCount: number;
+  pageCount?: number;
+  excerpt: string;
+}
+
+// The diagram's file-type categories this router recognizes. Grouped to
+// match the diagram's own buckets (e.g. xls/ods fold into "xlsx", pptx/rtf/odt
+// fold into "docx") rather than one category per extension.
+export type FileCategory =
+  | "csv"
+  | "json"
+  | "xlsx"
+  | "pdf"
+  | "docx"
+  | "archive"
+  | "image"
+  | "email"
+  | "code_log"
+  | "media"
+  | "web_xml"
+  | "unrecognized";
+
+export type AgentDomain = "structured_data" | "unstructured_doc" | "archive" | "database";
+
+export type CapabilityStatus = "implemented" | "planned";
+
+export interface AgentCapability {
+  category: FileCategory;
+  label: string;
+  domain: AgentDomain;
+  status: CapabilityStatus;
+  extensions: string[];
+}
+
+export interface UnsupportedFile {
+  file: string;
+  category: FileCategory;
+  status: "planned" | "unrecognized" | "error";
+  reason: string;
+}
+
 export type ColumnType =
   | "integer"
   | "float"
@@ -27,8 +74,10 @@ export interface DatasetProfile {
   name: string;
   sourceKind: SourceKind;
   sourceLabel: string;
+  contentKind: ContentKind;
   rowCount: number;
   columns: ColumnStats[];
+  documentMeta?: DocumentMeta;
   createdAt: string;
 }
 
@@ -47,6 +96,7 @@ export type PiiCategory =
 export type PiiSeverity = "low" | "medium" | "high" | "critical";
 
 export interface PiiFinding {
+  /** Column name for tabular datasets; a location label (e.g. "document text") for document datasets. */
   column: string;
   category: PiiCategory;
   severity: PiiSeverity;
@@ -110,6 +160,15 @@ export interface ObsMetricResult {
   query: string;
   value: number | null;
   error?: string;
+}
+
+export interface ExecutiveSummary {
+  generatedAt: string;
+  datasetCount: number;
+  overallRiskLevel: PiiSeverity;
+  highlights: string[];
+  perDataset: { datasetId: string; name: string; headline: string }[];
+  narrative?: string;
 }
 
 export interface ObsHealthReport {

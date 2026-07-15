@@ -206,3 +206,62 @@ export function scanForPii(
     clean: findings.length === 0,
   };
 }
+
+interface TextRule {
+  category: PiiCategory;
+  pattern: RegExp;
+  severity: PiiSeverity;
+}
+
+// Free text (PDF/DOCX content) needs different regex shapes than the
+// column-mode rules above: those are anchored to a whole cell value
+// (^...$), but a PII value in a document is embedded mid-sentence. These
+// patterns search rather than fully match, and are deliberately more
+// specific in their separator requirements so they don't overlap the way
+// the anchored phone/ssn/ip rules once did (see profiler regression notes).
+const TEXT_RULES: TextRule[] = [
+  { category: "email", pattern: /[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}/g, severity: "medium" },
+  { category: "ssn", pattern: /\b\d{3}-\d{2}-\d{4}\b/g, severity: "critical" },
+  { category: "credit_card", pattern: /\b\d{4}[- ]?\d{4}[- ]?\d{4}[- ]?\d{1,4}\b/g, severity: "critical" },
+  { category: "ip_address", pattern: /\b(?:\d{1,3}\.){3}\d{1,3}\b/g, severity: "low" },
+  { category: "phone", pattern: /\+?\(?\d{3}\)?[-. ]\d{3}[-. ]\d{4}\b/g, severity: "medium" },
+  { category: "api_key_or_secret", pattern: /\b(?=\w*[A-Za-z])(?=\w*\d)[A-Za-z0-9_-]{24,}\b/g, severity: "critical" },
+];
+
+const MAX_TEXT_SCAN_CHARS = 500_000;
+
+export function scanTextForPii(datasetId: string, text: string): PiiReport {
+  const scanned = text.slice(0, MAX_TEXT_SCAN_CHARS);
+  const findings: PiiFinding[] = [];
+
+  for (const rule of TEXT_RULES) {
+    const matches = [...scanned.matchAll(rule.pattern)].map((m) => m[0]);
+    if (matches.length === 0) continue;
+
+    findings.push({
+      column: "document text",
+      category: rule.category,
+      severity: rule.severity,
+      confidence: 0.8,
+      matchRatio: Number(Math.min(1, matches.length / 10).toFixed(2)),
+      sampleMasked: matches.slice(0, 3).map(mask),
+    });
+  }
+
+  const deductions = findings.reduce((sum, f) => sum + severityWeight(f.severity), 0);
+  const overallScore = Math.max(0, 100 - deductions);
+  const riskLevel: PiiSeverity =
+    overallScore < 40 ? "critical" : overallScore < 65 ? "high" : overallScore < 85 ? "medium" : "low";
+
+  findings.sort((a, b) => severityWeight(b.severity) - severityWeight(a.severity));
+
+  return {
+    datasetId,
+    generatedAt: new Date().toISOString(),
+    overallScore,
+    riskLevel,
+    findings,
+    columnsScanned: 1,
+    clean: findings.length === 0,
+  };
+}

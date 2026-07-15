@@ -1,5 +1,34 @@
 export type SourceKind = "attachment" | "database" | "observability";
 
+export type ContentKind = "tabular" | "document";
+
+export interface DocumentMeta {
+  wordCount: number;
+  pageCount?: number;
+  excerpt: string;
+}
+
+export type FileCategory =
+  | "csv"
+  | "json"
+  | "xlsx"
+  | "pdf"
+  | "docx"
+  | "archive"
+  | "image"
+  | "email"
+  | "code_log"
+  | "media"
+  | "web_xml"
+  | "unrecognized";
+
+export interface UnsupportedFile {
+  file: string;
+  category: FileCategory;
+  status: "planned" | "unrecognized" | "error";
+  reason: string;
+}
+
 export type ColumnType = "integer" | "float" | "boolean" | "date" | "datetime" | "text" | "unknown";
 
 export interface ColumnStats {
@@ -20,8 +49,10 @@ export interface DatasetProfile {
   name: string;
   sourceKind: SourceKind;
   sourceLabel: string;
+  contentKind: ContentKind;
   rowCount: number;
   columns: ColumnStats[];
+  documentMeta?: DocumentMeta;
   createdAt: string;
 }
 
@@ -109,7 +140,16 @@ export interface ObsHealthReport {
 export interface AnalyzeResponse {
   insights: Insight[];
   piiReport: PiiReport;
-  ddl: DdlResult;
+  ddl?: DdlResult;
+}
+
+export interface ExecutiveSummary {
+  generatedAt: string;
+  datasetCount: number;
+  overallRiskLevel: PiiSeverity;
+  highlights: string[];
+  perDataset: { datasetId: string; name: string; headline: string }[];
+  narrative?: string;
 }
 
 export interface SourcesResponse {
@@ -122,6 +162,7 @@ export interface SourcesResponse {
 
 export type AnalysisCard =
   | { kind: "summary"; profile: DatasetProfile }
+  | { kind: "document"; profile: DatasetProfile }
   | { kind: "insights"; insights: Insight[] }
   | { kind: "table"; profile: DatasetProfile; ddl: DdlResult; materialized?: MaterializeResult }
   | { kind: "pii"; report: PiiReport }
