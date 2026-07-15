@@ -1,0 +1,18 @@
+node_modules/
+dist/
+build/
+*.log
+*.tsbuildinfo
+.env
+.env.local
+
+# Real secrets and connection profiles never get committed.
+# Only the .example templates in auth-config/ are tracked.
+auth-config/*.json
+!auth-config/*.example.json
+
+server/data/*.sqlite
+server/data/*.sqlite-*
+server/uploads/
+
+.DS_Store

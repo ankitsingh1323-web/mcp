@@ -1,0 +1,14 @@
+[
+  {
+    "name": "prod-metrics",
+    "kind": "prometheus",
+    "description": "Example Prometheus-compatible observability endpoint for system-health insights.",
+    "queryUrl": "http://localhost:9090/api/v1/query",
+    "token": "replace-with-bearer-token-or-empty-string",
+    "queries": {
+      "error_rate": "sum(rate(http_requests_total{status=~\"5..\"}[5m])) / sum(rate(http_requests_total[5m]))",
+      "p95_latency_ms": "histogram_quantile(0.95, sum(rate(http_request_duration_ms_bucket[5m])) by (le))",
+      "up": "avg(up)"
+    }
+  }
+]

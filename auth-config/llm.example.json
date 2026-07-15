@@ -1,0 +1,8 @@
+{
+  "provider": "openai-compatible",
+  "baseUrl": "http://localhost:8000/v1",
+  "model": "kimi-k2",
+  "apiKey": "replace-with-local-gateway-token-or-empty-string",
+  "timeoutMs": 30000,
+  "enabled": true
+}

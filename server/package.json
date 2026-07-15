@@ -1,0 +1,31 @@
+{
+  "name": "data-agent-server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.9.0",
+    "cors": "^2.8.5",
+    "csv-parse": "^5.6.0",
+    "exceljs": "^4.4.0",
+    "express": "^4.21.2",
+    "multer": "^2.2.0",
+    "nanoid": "^5.0.9"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/multer": "^2.2.0",
+    "@types/node": "^22.10.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  }
+}

@@ -1,0 +1,15 @@
+[
+  {
+    "name": "local-workspace",
+    "kind": "sqlite",
+    "description": "Local SQLite workspace where analyzed files are materialized into real tables.",
+    "file": "server/data/workspace.sqlite"
+  },
+  {
+    "name": "warehouse",
+    "kind": "sqlite",
+    "description": "Example: point this at any existing SQLite file to browse/query it read-only.",
+    "file": "/path/to/existing/database.sqlite",
+    "readOnly": true
+  }
+]
