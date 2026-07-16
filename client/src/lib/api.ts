@@ -1,7 +1,9 @@
 import type {
   AnalyzeResponse,
   DatasetProfile,
+  EntityAssociation,
   ExecutiveSummary,
+  JoinSuggestion,
   MaterializeResult,
   ObsHealthReport,
   SourcesResponse,
@@ -57,6 +59,39 @@ export async function materializeDataset(id: string): Promise<MaterializeResult>
 export async function synthesizeSummary(): Promise<ExecutiveSummary> {
   const res = await fetch(`${BASE}/datasets/synthesize`);
   return asJson(res);
+}
+
+export async function fetchAssociations(): Promise<{ associations: EntityAssociation[]; datasetsAnalyzed: number }> {
+  const res = await fetch(`${BASE}/datasets/associations`);
+  return asJson(res);
+}
+
+export async function fetchRelationships(): Promise<{ suggestions: JoinSuggestion[] }> {
+  const res = await fetch(`${BASE}/datasets/relationships`);
+  return asJson(res);
+}
+
+export async function materializeJoin(
+  suggestion: JoinSuggestion,
+): Promise<{ tableName: string; rowCount: number; dbFile: string }> {
+  const tableName = `${suggestion.leftDatasetName}_${suggestion.rightDatasetName}_combined`
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_");
+  const res = await fetch(`${BASE}/datasets/relationships/materialize`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      leftDatasetId: suggestion.leftDatasetId,
+      rightDatasetId: suggestion.rightDatasetId,
+      sql: suggestion.sql,
+      tableName,
+    }),
+  });
+  return asJson(res);
+}
+
+export function imageUrl(id: string): string {
+  return `${BASE}/images/${id}`;
 }
 
 export async function sendChatMessage(message: string): Promise<{ reply: string }> {

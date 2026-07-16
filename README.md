@@ -15,11 +15,45 @@ rich cards **inline in the conversation**:
   documents
 - A **Synthesize** action that merges every analyzed dataset's findings
   into one cross-dataset executive summary
+- Named-entity extraction (people/orgs/locations/dates) per dataset, plus a
+  **Associations** action linking entities that show up across multiple
+  files (e.g. the same person named in two different sheets)
+- A **Suggest joins** action that finds likely relationships between
+  separately-uploaded tables (shared/overlapping key columns) and can
+  materialize the combination into one real business table with one click
 - A free-form chat to ask follow-up questions about anything loaded into the
-  workspace
+  workspace, in English or Arabic
 
 Everything above happens in one place — the chat thread — instead of
 separate dashboard tabs.
+
+### Excel: every way people actually keep spreadsheets
+
+Excel gets deeper, dedicated handling beyond the generic tabular path (see
+`server/src/agents/specialists/excelAgent.ts` and
+`server/src/agents/domains/excelSheetManager.ts`):
+
+- **Multiple tabs, and multiple workbooks at once** — each sheet becomes its
+  own dataset, named `<file> — <sheet>` when a workbook has more than one tab.
+- **Header row auto-detection** — a title row or blank rows above the real
+  header (extremely common in real spreadsheets) don't get mistaken for
+  data; the header-row heuristic also rejects merged banner cells (which
+  read as one repeated value, not distinct column names).
+- **Merged cells** resolve to the merge's master value rather than leaving
+  every non-anchor cell blank.
+- **Formula cells** resolve to their last-computed result.
+- **Free-form / non-tabular sheets** (notes, dashboards) are detected and
+  treated as a text document instead of being forced into a broken
+  rows/columns shape — they get the same document-mode PII scan and
+  insights as a PDF/DOCX.
+- **Embedded images** are extracted per sheet (with their anchor cell) and
+  shown in the chat.
+- **Arabic content** is detected per cell and translated to English (via
+  the configured LLM) for analysis — PII scanning, insights, entity
+  extraction, and the generated `CREATE TABLE`/materialized table all run
+  on the translated content, while `hasArabicContent` on the dataset flags
+  that translation happened. Without a reachable LLM, the original text is
+  kept and clearly not silently mistranslated.
 
 ## Architecture: hierarchical agent pipeline
 
@@ -34,16 +68,28 @@ L0  Master Orchestrator      server/src/agents/orchestrator.ts
     depth + size capped) → registry-driven classify + dispatch
 
 L1  Domain Managers          server/src/agents/domains/
-    structuredDataManager     csv/json/xlsx → tabular DatasetProfile
+    structuredDataManager     csv/json → tabular DatasetProfile
+    excelSheetManager         xlsx → N per-sheet DatasetProfiles + images + Arabic translation
     unstructuredDocManager    pdf/docx → document DatasetProfile
     databaseManager           SQLite (Postgres/MySQL/Mongo: same shape, TBD)
     piiComplianceManager      routes tabular → column scanner, document → text scanner
     businessIntelManager      routes tabular → column insights, document → text insights
 
 L2  Specialist Agents         server/src/agents/specialists/
-    pdfAgent (pdf-parse) · officeDocAgent (mammoth) · archiveAgent (adm-zip/tar-stream)
-    csv/json/xlsx parsing lives in ingestion/fileParser.ts (pre-existing, now
+    excelAgent (exceljs: header detection, merges, images) · pdfAgent (pdf-parse)
+    officeDocAgent (mammoth) · archiveAgent (adm-zip/tar-stream)
+    csv/json parsing lives in ingestion/fileParser.ts (pre-existing, now
     called from structuredDataManager)
+
+NLP helpers                   server/src/nlp/
+    arabic.ts (Arabic-script detection) · translation.ts (LLM-backed batch
+    translation, honest no-LLM fallback) · ner.ts (LLM entity extraction,
+    heuristic capitalized-phrase fallback)
+
+Cross-dataset agents           server/src/agents/
+    associations.ts   groups NER output across datasets into linked entities
+    relationships.ts  proposes JOINs between tables from column-name +
+                      sample-value overlap, materializable into one table
 
 Synthesiser                   server/src/agents/synthesiser.ts
     Cross-dataset executive summary from every dataset's cached PartialResults
@@ -157,3 +203,6 @@ no config required), and chat about it using the rule-based fallback.
   non-exploitable transitive `uuid` advisory pulled in by `exceljs` (no
   non-breaking fix upstream yet); we never pass user-controlled buffers
   into `uuid` generation so it isn't reachable in this app's code paths.
+- Join suggestions skip any pair of datasets that would resolve to the same
+  sanitized table name (e.g. two uploads both called "customers.xlsx") —
+  otherwise the generated SQL is a meaningless, broken self-join.

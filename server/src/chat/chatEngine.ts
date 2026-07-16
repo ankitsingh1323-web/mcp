@@ -1,4 +1,5 @@
 import { callLlm, streamLlm } from "../llm/llmClient.js";
+import { containsArabic } from "../nlp/arabic.js";
 import type { ChatMessage } from "../types.js";
 import { workspace } from "../session/sessionStore.js";
 
@@ -33,7 +34,11 @@ const SYSTEM_PROMPT =
   "analyzed). Use the provided dataset context to answer precisely. If the question can't be " +
   "answered from the given context, say so plainly instead of guessing. Keep answers concise and " +
   "concrete — reference actual column names and numbers when relevant. Never fabricate PII findings " +
-  "or numbers not present in the context.";
+  "or numbers not present in the context.\n\n" +
+  "Language: detect the language of the user's message and reply in that same language — if they " +
+  "write in Arabic, reply in Arabic; if they write in English, reply in English. Column/entity names " +
+  "that originated in Arabic and were translated for analysis may be referenced in either language, " +
+  "whichever reads more naturally in your reply.";
 
 export async function answerChat(history: ChatMessage[], question: string): Promise<string> {
   const context = buildContext();
@@ -74,42 +79,48 @@ export async function* streamChat(
   }
 }
 
+const ARABIC_FALLBACK_NOTICE =
+  "(الرد الكامل باللغة العربية يتطلب اتصال النموذج اللغوي المُهيأ، وهو غير متاح حاليًا — " +
+  "الإجابة أدناه بالإنجليزية بالاعتماد على قواعد ثابتة.)\n\n";
+
 function ruleBasedAnswer(question: string): string {
   const datasets = workspace.listAll();
+  const arabicInput = containsArabic(question);
+  const notice = arabicInput ? ARABIC_FALLBACK_NOTICE : "";
+
   if (datasets.length === 0) {
-    return "I don't have any datasets loaded yet — upload a file or connect a table first, then ask me about it.";
+    return `${notice}I don't have any datasets loaded yet — upload a file or connect a table first, then ask me about it.`;
   }
 
   const q = question.toLowerCase();
+  let answer: string;
 
   if (/pii|privacy|sensitive/.test(q)) {
     const flagged = datasets.filter((d) => d.piiReport && !d.piiReport.clean);
     if (flagged.length === 0) {
-      return "No PII risks have been flagged in the datasets I've scanned so far.";
+      answer = "No PII risks have been flagged in the datasets I've scanned so far.";
+    } else {
+      answer = flagged
+        .map(
+          (d) =>
+            `"${d.profile.name}" scored ${d.piiReport!.overallScore}/100 (${d.piiReport!.riskLevel} risk): ` +
+            d.piiReport!.findings.map((f) => `${f.column} looks like ${f.category}`).join(", "),
+        )
+        .join("\n");
     }
-    return flagged
-      .map(
-        (d) =>
-          `"${d.profile.name}" scored ${d.piiReport!.overallScore}/100 (${d.piiReport!.riskLevel} risk): ` +
-          d.piiReport!.findings.map((f) => `${f.column} looks like ${f.category}`).join(", "),
-      )
-      .join("\n");
-  }
-
-  if (/row|how many|count/.test(q)) {
-    return datasets.map((d) => `"${d.profile.name}" has ${d.profile.rowCount} rows.`).join("\n");
-  }
-
-  if (/column|schema|field/.test(q)) {
-    return datasets
+  } else if (/row|how many|count/.test(q)) {
+    answer = datasets.map((d) => `"${d.profile.name}" has ${d.profile.rowCount} rows.`).join("\n");
+  } else if (/column|schema|field/.test(q)) {
+    answer = datasets
       .map((d) => `"${d.profile.name}" columns: ${d.profile.columns.map((c) => c.name).join(", ")}`)
       .join("\n");
+  } else {
+    const names = datasets.map((d) => `"${d.profile.name}"`).join(", ");
+    answer =
+      `I can see ${datasets.length} dataset(s) loaded: ${names}. The local LLM isn't reachable right ` +
+      "now, so I can only answer basic questions about row counts, columns, and PII findings — try " +
+      'asking things like "how many rows" or "any PII risks?".';
   }
 
-  const names = datasets.map((d) => `"${d.profile.name}"`).join(", ");
-  return (
-    `I can see ${datasets.length} dataset(s) loaded: ${names}. The local LLM isn't reachable right ` +
-    "now, so I can only answer basic questions about row counts, columns, and PII findings — try " +
-    'asking things like "how many rows" or "any PII risks?".'
-  );
+  return notice + answer;
 }

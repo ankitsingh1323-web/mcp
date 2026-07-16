@@ -3,6 +3,7 @@ import express from "express";
 import { authStoreLocation, llmStatus } from "./auth/authStore.js";
 import { analyzeRouter } from "./routes/analyze.js";
 import { chatRouter } from "./routes/chat.js";
+import { imagesRouter } from "./routes/images.js";
 import { sourcesRouter } from "./routes/sources.js";
 import { uploadRouter } from "./routes/upload.js";
 
@@ -27,6 +28,7 @@ app.use("/api/upload", uploadRouter);
 app.use("/api/sources", sourcesRouter);
 app.use("/api/datasets", analyzeRouter);
 app.use("/api/chat", chatRouter);
+app.use("/api/images", imagesRouter);
 
 app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error(err);

@@ -53,7 +53,38 @@ export interface DatasetProfile {
   rowCount: number;
   columns: ColumnStats[];
   documentMeta?: DocumentMeta;
+  sheetName?: string;
+  hasArabicContent?: boolean;
+  imageIds?: string[];
   createdAt: string;
+}
+
+export type EntityType = "person" | "organization" | "location" | "date" | "other";
+
+export interface NamedEntity {
+  text: string;
+  type: EntityType;
+  mentions: number;
+}
+
+export interface EntityAssociation {
+  entity: string;
+  type: EntityType;
+  totalMentions: number;
+  datasets: { datasetId: string; name: string; mentions: number }[];
+}
+
+export interface JoinSuggestion {
+  leftDatasetId: string;
+  leftDatasetName: string;
+  leftColumn: string;
+  rightDatasetId: string;
+  rightDatasetName: string;
+  rightColumn: string;
+  overlapRatio: number;
+  overlapCount: number;
+  sql: string;
+  rationale: string;
 }
 
 export type PiiCategory =
@@ -141,6 +172,7 @@ export interface AnalyzeResponse {
   insights: Insight[];
   piiReport: PiiReport;
   ddl?: DdlResult;
+  entities: NamedEntity[];
 }
 
 export interface ExecutiveSummary {
@@ -166,6 +198,10 @@ export type AnalysisCard =
   | { kind: "insights"; insights: Insight[] }
   | { kind: "table"; profile: DatasetProfile; ddl: DdlResult; materialized?: MaterializeResult }
   | { kind: "pii"; report: PiiReport }
+  | { kind: "images"; imageIds: string[]; datasetName: string }
+  | { kind: "entities"; entities: NamedEntity[]; datasetName: string }
+  | { kind: "associations"; associations: EntityAssociation[] }
+  | { kind: "joins"; suggestions: JoinSuggestion[] }
   | { kind: "obs"; report: ObsHealthReport };
 
 export interface ChatEntry {

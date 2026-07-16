@@ -1,8 +1,9 @@
 import { fileTypeFromBuffer } from "file-type";
+import { handleExcelFile } from "./domains/excelSheetManager.js";
 import { handleUnstructuredFile } from "./domains/unstructuredDocManager.js";
 import { handleStructuredFile } from "./domains/structuredDataManager.js";
 import { capabilityForExtension } from "./registry.js";
-import { isArchiveExt, unpackArchive } from "./specialists/archiveAgent.js";
+import { unpackArchive } from "./specialists/archiveAgent.js";
 import type { DatasetProfile, FileCategory, UnsupportedFile } from "../types.js";
 
 export interface OrchestratorResult {
@@ -125,7 +126,10 @@ async function processFile(
   }
 
   try {
-    if (category === "csv" || category === "json" || category === "xlsx") {
+    if (category === "xlsx") {
+      const created = await handleExcelFile(file.name, file.buffer);
+      datasets.push(...created);
+    } else if (category === "csv" || category === "json") {
       const created = await handleStructuredFile(file.name, file.buffer);
       datasets.push(...created);
     } else if (category === "pdf" || category === "docx") {

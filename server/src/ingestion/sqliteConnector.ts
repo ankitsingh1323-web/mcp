@@ -124,6 +124,24 @@ export function materializeTable(
   return rows.length;
 }
 
+/**
+ * Materializes a suggested cross-file JOIN into a brand-new table via
+ * CREATE TABLE ... AS SELECT. `selectSql` must already be a validated
+ * read-only SELECT (see isReadOnlySelect) referencing tables that already
+ * exist in this db — callers are responsible for materializing both source
+ * tables first.
+ */
+export function materializeJoinQuery(db: Database.Database, selectSql: string, newTableName: string): number {
+  if (!isReadOnlySelect(selectSql)) {
+    throw new Error("Only a single SELECT statement may be materialized as a join.");
+  }
+  const quoted = quoteIdent(newTableName);
+  db.exec(`DROP TABLE IF EXISTS ${quoted}`);
+  db.exec(`CREATE TABLE ${quoted} AS ${selectSql}`);
+  const { count } = db.prepare(`SELECT COUNT(*) as count FROM ${quoted}`).get() as { count: number };
+  return count;
+}
+
 function normalizeValue(value: unknown): unknown {
   if (value === undefined) return null;
   if (typeof value === "boolean") return value ? 1 : 0;

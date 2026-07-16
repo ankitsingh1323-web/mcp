@@ -5,6 +5,8 @@ import {
   analyzeDataset,
   connectDb,
   connectObs,
+  fetchAssociations,
+  fetchRelationships,
   fetchSources,
   streamChatMessage,
   synthesizeSummary,
@@ -37,9 +39,12 @@ export default function App() {
       role: "assistant",
       ts: nowIso(),
       text:
-        "Hi — I'm Datalore. Drop a CSV, JSON, XLSX, PDF, DOCX, or ZIP/TAR archive (or connect a database / " +
-        "observability source from the left panel) and I'll profile it, surface business insights, propose " +
-        "a table you can create, and run a PII health check. Then ask me anything about the data.",
+        "Hi — I'm Datalore. Drop one or more Excel workbooks (any number of tabs, title rows, merged cells, " +
+        "and embedded images are all handled — Arabic content gets detected and translated too), or a CSV/" +
+        "JSON/PDF/DOCX/ZIP file. I'll profile every sheet, surface business insights, extract named entities, " +
+        "run a PII health check, and — once you've loaded a few sheets — I can suggest how to combine them " +
+        "into one business table or find entities that link across files. Ask me anything, in English or " +
+        "Arabic (العربية).",
     },
   ]);
   const [datasets, setDatasets] = useState<DatasetProfile[]>([]);
@@ -50,6 +55,8 @@ export default function App() {
   const [connectingObs, setConnectingObs] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [synthesizing, setSynthesizing] = useState(false);
+  const [findingAssociations, setFindingAssociations] = useState(false);
+  const [findingJoins, setFindingJoins] = useState(false);
   const [toast, setToast] = useState<string | undefined>();
   const [theme, setTheme] = useState<"light" | "dark">(() => {
     const stored = localStorage.getItem("theme");
@@ -94,9 +101,15 @@ export default function App() {
       setDatasetRisk((prev) => ({ ...prev, [profile.id]: result.piiReport.riskLevel }));
       const cards: AnalysisCard[] = [
         profile.contentKind === "document" ? { kind: "document", profile } : { kind: "summary", profile },
+        ...(profile.imageIds && profile.imageIds.length > 0
+          ? [{ kind: "images", imageIds: profile.imageIds, datasetName: profile.name } as AnalysisCard]
+          : []),
         { kind: "insights", insights: result.insights },
         ...(result.ddl ? [{ kind: "table", profile, ddl: result.ddl } as AnalysisCard] : []),
         { kind: "pii", report: result.piiReport },
+        ...(result.entities.length > 0
+          ? [{ kind: "entities", entities: result.entities, datasetName: profile.name } as AnalysisCard]
+          : []),
       ];
       addEntry({ id: newId(), role: "assistant", ts: nowIso(), cards });
     } catch (err) {
@@ -192,6 +205,42 @@ export default function App() {
     }
   }
 
+  async function handleFindAssociations() {
+    setFindingAssociations(true);
+    try {
+      const { associations, datasetsAnalyzed } = await fetchAssociations();
+      addEntry({
+        id: newId(),
+        role: "assistant",
+        ts: nowIso(),
+        text: `Checked entities across ${datasetsAnalyzed} analyzed dataset(s):`,
+        cards: [{ kind: "associations", associations }],
+      });
+    } catch (err) {
+      setToast(err instanceof Error ? err.message : "Could not compute associations.");
+    } finally {
+      setFindingAssociations(false);
+    }
+  }
+
+  async function handleFindJoins() {
+    setFindingJoins(true);
+    try {
+      const { suggestions } = await fetchRelationships();
+      addEntry({
+        id: newId(),
+        role: "assistant",
+        ts: nowIso(),
+        text: "Here's what I found across your tables:",
+        cards: [{ kind: "joins", suggestions }],
+      });
+    } catch (err) {
+      setToast(err instanceof Error ? err.message : "Could not compute join suggestions.");
+    } finally {
+      setFindingJoins(false);
+    }
+  }
+
   function handleMaterialized(datasetId: string, result: MaterializeResult) {
     setEntries((prev) =>
       prev.map((e) =>
@@ -280,6 +329,22 @@ export default function App() {
             <div className="chat-header-title">Analysis chat</div>
             <div className="chat-header-sub">{datasets.length} dataset(s) in this workspace</div>
           </div>
+          <button
+            className="btn"
+            onClick={handleFindJoins}
+            disabled={findingJoins || datasets.length < 2}
+            title="Find likely relationships across your tables and combine them"
+          >
+            {findingJoins ? "Checking…" : "🔗 Suggest joins"}
+          </button>
+          <button
+            className="btn"
+            onClick={handleFindAssociations}
+            disabled={findingAssociations || datasets.length < 2}
+            title="Find entities that show up across multiple datasets"
+          >
+            {findingAssociations ? "Checking…" : "🕸️ Associations"}
+          </button>
           <button
             className="btn"
             onClick={handleSynthesize}

@@ -11,6 +11,8 @@ interface PatternRule {
   category: PiiCategory;
   valuePattern?: RegExp;
   nameHints: string[];
+  /** Hints matched by exact equality only, never substring — for short/generic words (e.g. "name") that would false-positive on unrelated columns like "product_name" or "file_name" under substring matching. */
+  exactNameHints?: string[];
   baseSeverity: PiiSeverity;
 }
 
@@ -64,6 +66,7 @@ const RULES: PatternRule[] = [
   {
     category: "person_name",
     nameHints: ["first_name", "last_name", "full_name", "surname", "given_name", "customer_name", "employee_name"],
+    exactNameHints: ["name"],
     baseSeverity: "medium",
   },
   {
@@ -83,8 +86,9 @@ function normalizedName(name: string): string {
   return name.trim().toLowerCase().replace(/[\s-]+/g, "_");
 }
 
-function nameMatches(colName: string, hints: string[]): boolean {
+function nameMatches(colName: string, hints: string[], exactHints?: string[]): boolean {
   const n = normalizedName(colName);
+  if (exactHints?.some((h) => n === h)) return true;
   return hints.some((h) => n === h || n.includes(h));
 }
 
@@ -126,7 +130,7 @@ function scanColumn(col: ColumnStats, allRows: unknown[]): PiiFinding | undefine
   let best: { rule: PatternRule; matchCount: number; nameHit: boolean } | undefined;
 
   for (const rule of RULES) {
-    const nameHit = nameMatches(col.name, rule.nameHints);
+    const nameHit = nameMatches(col.name, rule.nameHints, rule.exactNameHints);
     let matchCount = 0;
 
     // Value-pattern rules (phone/ssn/credit-card/etc.) are only meaningful

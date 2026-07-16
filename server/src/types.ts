@@ -78,7 +78,50 @@ export interface DatasetProfile {
   rowCount: number;
   columns: ColumnStats[];
   documentMeta?: DocumentMeta;
+  /** Set when this dataset came from one sheet of a multi-sheet Excel workbook. */
+  sheetName?: string;
+  /** True if any Arabic text was detected in this dataset's source content. */
+  hasArabicContent?: boolean;
+  /** IDs of images extracted from the same workbook/sheet — fetch via GET /api/images/:id. */
+  imageIds?: string[];
   createdAt: string;
+}
+
+export interface ExtractedImageMeta {
+  id: string;
+  fileName: string;
+  sheetName: string;
+  anchorCell?: string;
+  extension: string;
+  byteSize: number;
+}
+
+export type EntityType = "person" | "organization" | "location" | "date" | "other";
+
+export interface NamedEntity {
+  text: string;
+  type: EntityType;
+  mentions: number;
+}
+
+export interface EntityAssociation {
+  entity: string;
+  type: EntityType;
+  totalMentions: number;
+  datasets: { datasetId: string; name: string; mentions: number }[];
+}
+
+export interface JoinSuggestion {
+  leftDatasetId: string;
+  leftDatasetName: string;
+  leftColumn: string;
+  rightDatasetId: string;
+  rightDatasetName: string;
+  rightColumn: string;
+  overlapRatio: number;
+  overlapCount: number;
+  sql: string;
+  rationale: string;
 }
 
 export type PiiCategory =

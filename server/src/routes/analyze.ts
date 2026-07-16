@@ -1,10 +1,18 @@
 import { Router } from "express";
 import { getDbProfile } from "../auth/authStore.js";
+import { buildAssociations, buildRepresentativeText, crossDatasetOnly } from "../agents/associations.js";
 import { generateInsightsForDataset } from "../agents/domains/businessIntelManager.js";
 import { scanDataset } from "../agents/domains/piiComplianceManager.js";
+import { suggestJoins } from "../agents/relationships.js";
 import { synthesize } from "../agents/synthesiser.js";
 import { generateCreateTable } from "../analysis/ddlGenerator.js";
-import { materializeTable, openDb, tableRowCount } from "../ingestion/sqliteConnector.js";
+import {
+  materializeJoinQuery,
+  materializeTable,
+  openDb,
+  tableRowCount,
+} from "../ingestion/sqliteConnector.js";
+import { extractEntities } from "../nlp/ner.js";
 import { workspace } from "../session/sessionStore.js";
 import type { DbProfile } from "../auth/authStore.js";
 
@@ -25,11 +33,63 @@ analyzeRouter.get("/", (_req, res) => {
   res.json({ datasets: workspace.listDatasets() });
 });
 
-// Must be registered before "/:id" — otherwise Express would match this
-// literal path as if "synthesize" were a dataset id.
+// These literal-path routes must be registered before "/:id" — otherwise
+// Express would match them as if the literal segment were a dataset id.
 analyzeRouter.get("/synthesize", async (_req, res) => {
   const summary = await synthesize();
   res.json(summary);
+});
+
+analyzeRouter.get("/associations", (_req, res) => {
+  const perDataset = workspace
+    .listAll()
+    .filter((e) => e.entities)
+    .map((e) => ({ datasetId: e.profile.id, name: e.profile.name, entities: e.entities! }));
+  const associations = crossDatasetOnly(buildAssociations(perDataset));
+  res.json({ associations, datasetsAnalyzed: perDataset.length });
+});
+
+analyzeRouter.get("/relationships", (_req, res) => {
+  const datasets = workspace.listAll().map((e) => ({ profile: e.profile, rows: e.rows }));
+  const suggestions = suggestJoins(datasets);
+  res.json({ suggestions });
+});
+
+analyzeRouter.post("/relationships/materialize", (req, res) => {
+  const { leftDatasetId, rightDatasetId, sql, tableName } = req.body ?? {};
+  if (!leftDatasetId || !rightDatasetId || !sql || !tableName) {
+    return res.status(400).json({
+      error: "leftDatasetId, rightDatasetId, sql, and tableName are all required.",
+    });
+  }
+
+  const left = workspace.getDataset(leftDatasetId);
+  const right = workspace.getDataset(rightDatasetId);
+  if (!left || !right) return res.status(404).json({ error: "One or both datasets not found." });
+
+  try {
+    const profile = workspaceDbProfile();
+    const db = openDb(profile);
+
+    for (const entry of [left, right]) {
+      if (!entry.materialized) {
+        const ddl = generateCreateTable(entry.profile.name, entry.profile.columns);
+        materializeTable(db, ddl, entry.profile.columns, entry.rows);
+        workspace.setMaterialized(entry.profile.id, {
+          tableName: ddl.tableName,
+          rowsInserted: entry.rows.length,
+          dbFile: profile.file,
+          preexistingRowCount: 0,
+        });
+      }
+    }
+
+    const rowCount = materializeJoinQuery(db, sql, tableName);
+    db.close();
+    res.json({ tableName, rowCount, dbFile: profile.file });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "join materialize failed" });
+  }
 });
 
 analyzeRouter.get("/:id", (req, res) => {
@@ -55,12 +115,16 @@ analyzeRouter.post("/:id/analyze", async (req, res) => {
   });
   workspace.setInsights(entry.profile.id, insights);
 
+  const entityText = buildRepresentativeText(entry.profile, { rows: entry.rows, text: entry.text });
+  const entities = await extractEntities(entityText);
+  workspace.setEntities(entry.profile.id, entities);
+
   const ddl =
     entry.profile.contentKind === "tabular"
       ? generateCreateTable(entry.profile.name, entry.profile.columns)
       : undefined;
 
-  res.json({ insights, piiReport, ddl });
+  res.json({ insights, piiReport, ddl, entities });
 });
 
 analyzeRouter.post("/:id/materialize", (req, res) => {

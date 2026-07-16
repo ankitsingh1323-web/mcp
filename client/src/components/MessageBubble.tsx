@@ -15,7 +15,7 @@ export function MessageBubble({
       <div className={`avatar ${isUser ? "user" : "assistant"}`}>{isUser ? "You" : "AI"}</div>
       <div className="msg-body">
         {entry.text !== undefined && (
-          <div className="bubble">
+          <div className="bubble" dir="auto">
             {entry.pending ? (
               <span className="typing-dots">
                 <span />

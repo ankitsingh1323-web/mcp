@@ -46,7 +46,8 @@ export function ChatComposer({
         <textarea
           ref={taRef}
           rows={1}
-          placeholder="Ask about your data — trends, row counts, PII risks, anything…"
+          dir="auto"
+          placeholder="Ask about your data — trends, row counts, PII risks, anything… (English or العربية)"
           value={value}
           onChange={(e) => {
             setValue(e.target.value);
